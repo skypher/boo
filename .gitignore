@@ -1,0 +1,8 @@
+.pio/
+.venv/
+.vscode/
+CLAUDE.md
+deploy.sh
+PROJECT_STATUS.md
+*.pyc
+__pycache__/
