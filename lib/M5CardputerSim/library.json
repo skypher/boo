@@ -1,0 +1,13 @@
+{
+  "name": "M5CardputerSim",
+  "version": "1.0.0",
+  "description": "Simulator for M5Cardputer using SDL2",
+  "keywords": "simulator, sdl2, m5stack",
+  "frameworks": ["arduino"],
+  "platforms": ["native"],
+  "build": {
+    "flags": [
+      "-Isrc"
+    ]
+  }
+}

@@ -1,4 +1,5 @@
 .pio/
+.pio-home/
 .venv/
 .vscode/
 CLAUDE.md
