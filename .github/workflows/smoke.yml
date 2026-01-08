@@ -31,10 +31,4 @@ jobs:
 
       - name: Smoke run (xvfb)
         run: |
-          set -e
-          timeout 5s xvfb-run -a ./.pio/build/simulator/program || {
-            code=$?
-            if [ "$code" -ne 124 ]; then
-              exit "$code"
-            fi
-          }
+          timeout 30s xvfb-run -a env BOO_SMOKE=1 SDL_AUDIODRIVER=dummy ./.pio/build/simulator/program

@@ -6,6 +6,7 @@
 #include <M5Cardputer.h>
 #include <Preferences.h>
 #include <cstring>
+#include <cstdlib>
 
 #if ESP32
 #include "soc/rtc_cntl_reg.h"
@@ -89,6 +90,9 @@ unsigned long lastNoteTime = 0;
 // Volume control
 int volume = 255;
 bool muted = false;
+bool smokeMode = false;
+bool smokeDone = false;
+const unsigned long smokeSceneMs = 5000;
 
 // ============== Helper Functions ==============
 
@@ -113,6 +117,17 @@ void enterDownloadMode() {
 void playNote(int freq, int duration) {
     M5Cardputer.Speaker.tone(freq, duration);
     delay(duration + 20);
+}
+
+inline bool smokeTimedOut(unsigned long startMs) {
+    return smokeMode && (millis() - startMs >= smokeSceneMs);
+}
+
+void smokeHold(unsigned long startMs) {
+    while (!smokeTimedOut(startMs)) {
+        M5Cardputer.update();
+        delay(33);
+    }
 }
 
 // ============== Drawing Functions (use canvas) ==============
@@ -426,6 +441,7 @@ void feedScene() {
     const int foodCount = sizeof(foodItems) / sizeof(foodItems[0]);
     const FoodItem selectedFood = foodItems[random(foodCount)];
 
+    unsigned long sceneStart = millis();
     const int foodFrames = 15;
     const int eatFrames = 20;
     const int foodScale = 2;
@@ -439,6 +455,7 @@ void feedScene() {
     const int thanksHeight = 8 * thanksSize;
 
     for (int frame = 0; frame < foodFrames; frame++) {
+        if (smokeTimedOut(sceneStart)) return;
         canvas.fillSprite(COLOR_BG);
 
         const int nameWidth = strlen(selectedFood.name) * 6 * nameSize;
@@ -460,6 +477,7 @@ void feedScene() {
     }
 
     for (int frame = 0; frame < eatFrames; frame++) {
+        if (smokeTimedOut(sceneStart)) return;
         canvas.fillSprite(COLOR_BG);
 
         // Ghost eating animation (same for all foods)
@@ -509,6 +527,7 @@ void feedScene() {
 
     // Celebration
     for (int i = 0; i < 10; i++) {
+        if (smokeTimedOut(sceneStart)) return;
         canvas.fillSprite(COLOR_BG);
         drawGhost(104, 50, i % 2 == 0);
 
@@ -527,6 +546,10 @@ void feedScene() {
 
         canvas.pushSprite(0, 0);
         playNote(NOTE_C5 + i * 50, 80);
+    }
+
+    if (smokeMode) {
+        smokeHold(sceneStart);
     }
 }
 
@@ -550,7 +573,9 @@ void danceScene() {
     };
     int tempo = 120;
 
+    unsigned long sceneStart = millis();
     for (int frame = 0; frame < 60; frame++) {
+        if (smokeTimedOut(sceneStart)) return;
         canvas.fillSprite(COLOR_BG);
 
         // Dancing ghost in center
@@ -590,6 +615,7 @@ void danceScene() {
     }
 
     // Final pose
+    if (smokeTimedOut(sceneStart)) return;
     canvas.fillSprite(COLOR_BG);
     drawGhost(104, 55, true);
     for (int s = 0; s < 8; s++) {
@@ -605,6 +631,10 @@ void danceScene() {
     playNote(NOTE_E5, 150);
     playNote(NOTE_G5, 300);
     delay(500);
+
+    if (smokeMode) {
+        smokeHold(sceneStart);
+    }
 }
 
 void marchScene() {
@@ -637,6 +667,7 @@ void marchScene() {
 
     while (true) {
         unsigned long now = millis();
+        if (smokeTimedOut(startScene)) break;
 
         // Music (Looping)
         if (!muted && now >= nextNoteTime) {
@@ -688,10 +719,11 @@ void marchScene() {
 
         delay(33);
     }
-    delay(200);
+    if (!smokeMode) delay(200);
 }
 
 void gameScene() {
+    unsigned long sceneStart = millis();
     int score = 0;
     int rounds = 5;
     int gx = 104;
@@ -712,20 +744,27 @@ void gameScene() {
     canvas.print("Press key to start...");
     canvas.pushSprite(0, 0);
 
-    while (true) {
-        M5Cardputer.update();
-        if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) break;
-        delay(50);
+    if (!smokeMode) {
+        while (true) {
+            if (smokeTimedOut(sceneStart)) return;
+            M5Cardputer.update();
+            if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) break;
+            delay(50);
+        }
+        delay(200);
+    } else {
+        delay(200);
     }
-    delay(200);
 
     for (int round = 0; round < rounds; round++) {
+        if (smokeTimedOut(sceneStart)) return;
         int starX = -20;
         int speed = 4 + random(3);
         bool caught = false;
         bool done = false;
 
         while (!done && starX < 260) {
+            if (smokeTimedOut(sceneStart)) return;
             canvas.fillSprite(COLOR_BG);
             drawGhost(gx, 75, false);
             drawStar(starX, 30, 10, COLOR_STAR);
@@ -751,6 +790,7 @@ void gameScene() {
         }
 
         // Result
+        if (smokeTimedOut(sceneStart)) return;
         canvas.fillSprite(COLOR_BG);
         drawGhost(gx, 75, true);
         if (caught) {
@@ -777,6 +817,7 @@ void gameScene() {
 
     // Final score
     for (int i = 0; i < 15; i++) {
+        if (smokeTimedOut(sceneStart)) return;
         canvas.fillSprite(COLOR_BG);
         drawGhost(gx, 50, i % 3 == 0, score >= 3, i);
 
@@ -799,6 +840,17 @@ void gameScene() {
         }
     }
     delay(500);
+
+    if (smokeMode) {
+        smokeHold(sceneStart);
+    }
+}
+
+void runSmokeSequence() {
+    feedScene();
+    danceScene();
+    marchScene();
+    gameScene();
 }
 
 // ============== Main ==============
@@ -808,6 +860,16 @@ void setup() {
     M5Cardputer.begin(cfg, true);
     M5Cardputer.Display.setRotation(1);
     M5Cardputer.Speaker.setVolume(255);  // Max volume
+
+#if !ESP32
+    const char* smokeEnv = std::getenv("BOO_SMOKE");
+    if (smokeEnv && smokeEnv[0] != '\0') {
+        smokeMode = true;
+        muted = true;
+        volume = 0;
+        M5Cardputer.Speaker.setVolume(0);
+    }
+#endif
 
     // Create sprite buffer
     canvas.createSprite(SCREEN_WIDTH, SCREEN_HEIGHT);
@@ -869,6 +931,19 @@ void setup() {
 }
 
 void loop() {
+    if (smokeMode) {
+        if (!smokeDone) {
+            smokeDone = true;
+            runSmokeSequence();
+        }
+#if !ESP32
+        std::exit(0);
+#else
+        delay(1000);
+#endif
+        return;
+    }
+
     unsigned long now = millis();
 
     // Update ghost physics
